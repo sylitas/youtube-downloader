@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, RotateCcw, ChevronDown, ChevronRight, AlertCircle, FolderOpen, Music } from 'lucide-react';
+import { RefreshCw, RotateCcw, ChevronDown, ChevronRight, AlertCircle, FolderOpen, Music, Copy, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -10,6 +10,8 @@ export default function ErrorsView() {
   const [expandedPlaylists, setExpandedPlaylists] = useState({});
   const [retryingIds, setRetryingIds] = useState({});
   const [retryProgress, setRetryProgress] = useState({});
+  const [copiedId, setCopiedId] = useState(null);
+  const [concurrency, setConcurrency] = useState(10);
 
   const load = async () => {
     setLoading(true);
@@ -19,6 +21,13 @@ export default function ErrorsView() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Load concurrency from settings
+  useEffect(() => {
+    window.electronAPI.getSettings().then((s) => {
+      if (s.concurrency) setConcurrency(s.concurrency);
+    });
+  }, []);
 
   // Listen to progress events for retries
   useEffect(() => {
@@ -96,20 +105,44 @@ export default function ErrorsView() {
     }
   };
 
-  const retryPlaylist = async (playlist) => {
-    for (const item of playlist.items) {
-      await retryOne(item);
+  // Queue runner with concurrency
+  const runQueue = async (items) => {
+    let idx = 0;
+    const worker = async () => {
+      while (true) {
+        const myIdx = idx++;
+        if (myIdx >= items.length) break;
+        await retryOne(items[myIdx]);
+      }
+    };
+    const promises = [];
+    for (let i = 0; i < Math.min(concurrency, items.length); i++) {
+      promises.push(worker());
     }
+    await Promise.allSettled(promises);
+  };
+
+  const retryPlaylist = async (playlist) => {
+    await runQueue(playlist.items);
   };
 
   const retryAll = async () => {
-    for (const playlist of playlistList) {
-      await retryPlaylist(playlist);
-    }
+    const allItems = playlistList.flatMap((p) => p.items);
+    await runQueue(allItems);
   };
 
   const totalErrors = errorItems.length;
   const currentlyRetrying = Object.values(retryingIds).filter(Boolean).length;
+
+  const deleteOne = async (videoId) => {
+    await window.electronAPI.deleteError(videoId);
+    await load();
+  };
+
+  const deleteAll = async () => {
+    await window.electronAPI.deleteAllErrors();
+    await load();
+  };
 
   return (
     <div className="flex flex-col h-full p-6 gap-4">
@@ -127,10 +160,16 @@ export default function ErrorsView() {
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </Button>
           {totalErrors > 0 && (
-            <Button variant="secondary" size="sm" onClick={retryAll} disabled={currentlyRetrying > 0}>
-              <RotateCcw size={14} className="mr-1" />
-              Retry All ({totalErrors})
-            </Button>
+            <>
+              <Button variant="secondary" size="sm" onClick={retryAll} disabled={currentlyRetrying > 0}>
+                <RotateCcw size={14} className="mr-1" />
+                Retry All ({totalErrors})
+              </Button>
+              <Button variant="destructive" size="sm" onClick={deleteAll} disabled={currentlyRetrying > 0}>
+                <Trash2 size={14} className="mr-1" />
+                Delete All
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -177,7 +216,15 @@ export default function ErrorsView() {
                         key={item.videoId}
                         className="flex flex-col px-4 py-2.5 hover:bg-zinc-800/30 transition-colors border-b border-border/50 last:border-b-0"
                       >
-                        <div className="flex items-center gap-3">
+                        <div
+                        className="flex items-center gap-3 cursor-pointer group/row"
+                        onClick={() => {
+                          navigator.clipboard.writeText(item.title);
+                          setCopiedId(item.videoId);
+                          setTimeout(() => setCopiedId((prev) => prev === item.videoId ? null : prev), 1500);
+                        }}
+                        title="Click to copy title"
+                      >
                           {item.thumbnail ? (
                             <img
                               src={item.thumbnail}
@@ -191,7 +238,14 @@ export default function ErrorsView() {
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <span className="text-sm truncate block">{item.title}</span>
+                            <span className="text-sm truncate block flex items-center gap-1.5">
+                              {item.title}
+                              {copiedId === item.videoId ? (
+                                <Check size={12} className="text-emerald-400 shrink-0" />
+                              ) : (
+                                <Copy size={12} className="text-muted-foreground opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0" />
+                              )}
+                            </span>
                             {item.lastError && !isRetrying && (
                               <p className="text-xs text-red-400 truncate mt-0.5">{item.lastError}</p>
                             )}
@@ -207,15 +261,26 @@ export default function ErrorsView() {
                               <RefreshCw size={10} className="mr-1 animate-spin" />Retrying
                             </Badge>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-xs shrink-0"
-                              onClick={() => retryOne(item)}
-                              disabled={currentlyRetrying > 0}
-                            >
-                              <RotateCcw size={12} className="mr-1" /> Retry
-                            </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={(e) => { e.stopPropagation(); retryOne(item); }}
+                                disabled={currentlyRetrying > 0}
+                              >
+                                <RotateCcw size={12} className="mr-1" /> Retry
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/30"
+                                onClick={(e) => { e.stopPropagation(); deleteOne(item.videoId); }}
+                                disabled={currentlyRetrying > 0}
+                              >
+                                <Trash2 size={12} />
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </div>

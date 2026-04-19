@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   outputDir: path.join(os.homedir(), 'Music', 'YT'),
   cookiesFile: '',
   audioQuality: '320K',
+  concurrency: 10,
 };
 
 // Default manifest
@@ -196,6 +197,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
 
@@ -408,6 +410,25 @@ ipcMain.handle('library:delete-track', async (_, videoId) => {
 });
 
 
+// ─── IPC: Error record management ────────────────────────────────────────────
+
+ipcMain.handle('library:delete-error', (_, videoId) => {
+  const library = loadLibrary();
+  if (library.items[videoId]) {
+    delete library.items[videoId];
+    saveLibrary(library);
+  }
+  return true;
+});
+
+ipcMain.handle('library:delete-all-errors', () => {
+  const library = loadLibrary();
+  const errorIds = Object.keys(library.items).filter((id) => library.items[id].status === 'error');
+  errorIds.forEach((id) => delete library.items[id]);
+  saveLibrary(library);
+  return errorIds.length;
+});
+
 // ─── IPC: Scan playlist ───────────────────────────────────────────────────────
 
 ipcMain.handle('yt:scan-playlist', async (event, { url, cookiesFile }) => {
@@ -601,14 +622,18 @@ ipcMain.handle('yt:download-video', async (event, { video, playlistId, playlistT
   }
 
   // All qualities failed
+  const isRateLimit = /429|too many requests|rate.?limit|sign in to confirm/i.test(lastErr?.message || '');
+  const errorMsg = isRateLimit ? 'Rate limited by YouTube' : (lastErr?.message || 'Download failed');
   const library = loadLibrary();
   library.items[video.videoId] = {
     videoId: video.videoId, title: video.title, playlistId, playlistTitle,
     thumbnail: video.thumbnail || `https://i.ytimg.com/vi/${video.videoId}/default.jpg`,
-    filePath: '', downloadedAt: null, status: 'error', lastError: lastErr?.message || 'Download failed', source: source || 'playlist',
+    filePath: '', downloadedAt: null, status: 'error', lastError: errorMsg, source: source || 'playlist',
   };
   saveLibrary(library);
-  throw lastErr;
+  const err = new Error(errorMsg);
+  err.isRateLimit = isRateLimit;
+  throw err;
 });
 
 ipcMain.handle('yt:cancel-download', (_, videoId) => {
@@ -690,3 +715,7 @@ function findOutputFile(dir, videoId) {
     return null;
   }
 }
+
+ipcMain.handle('shell:open-external', (_, url) => {
+  return shell.openExternal(url);
+});

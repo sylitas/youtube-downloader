@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 export default function SettingsPanel({ onClose }) {
-  const [settings, setSettings] = useState({ outputDir: '', cookiesFile: '', audioQuality: '320K' });
+  const [settings, setSettings] = useState({ outputDir: '', cookiesFile: '', audioQuality: '320K', concurrency: 10 });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showUpdateLibs, setShowUpdateLibs] = useState(false);
 
@@ -29,16 +29,17 @@ export default function SettingsPanel({ onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[480px] rounded-xl border border-border bg-zinc-900 shadow-xl p-6">
+      <div className="w-[480px] max-h-[85vh] flex flex-col rounded-xl border border-border bg-zinc-900 shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
           <h2 className="text-lg font-semibold">Settings</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X size={18} />
           </button>
         </div>
 
-        <div className="space-y-5">
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-6 space-y-5">
           {/* Output directory */}
           <div>
             <label className="block text-sm font-medium mb-1.5">Output Directory</label>
@@ -98,6 +99,25 @@ export default function SettingsPanel({ onClose }) {
             </p>
           </div>
 
+          {/* Parallel downloads */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Parallel Downloads</label>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={settings.concurrency || 10}
+              onChange={(e) => {
+                const v = Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 1));
+                setSettings((s) => ({ ...s, concurrency: v }));
+              }}
+              className="w-24"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Number of simultaneous downloads (1–100). Lower values reduce the chance of YouTube rate limiting.
+            </p>
+          </div>
+
           {/* Update Libraries */}
           <div>
             <label className="block text-sm font-medium mb-1.5">Dependencies</label>
@@ -115,7 +135,7 @@ export default function SettingsPanel({ onClose }) {
           </div>
 
           {/* Danger zone */}
-          <div className="pt-4 border-t border-border">
+          <div className="pt-4 border-t border-border pb-1">
             <label className="block text-sm font-medium mb-1.5 text-red-400">Danger Zone</label>
             <Button
               variant="outline"
@@ -131,7 +151,8 @@ export default function SettingsPanel({ onClose }) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 mt-6">
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave}>Save</Button>
         </div>

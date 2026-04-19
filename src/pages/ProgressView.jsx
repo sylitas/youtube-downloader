@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RotateCcw, CheckCircle2, XCircle, Loader2, Clock } from 'lucide-react';
+import { ArrowLeft, RotateCcw, CheckCircle2, XCircle, Loader2, Clock, PauseCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -14,17 +14,20 @@ function StatusBadge({ status }) {
       return <Badge variant="secondary"><Loader2 size={10} className="mr-1 animate-spin" />Downloading</Badge>;
     case 'skipped':
       return <Badge variant="muted">Skipped</Badge>;
+    case 'rate-limited':
+      return <Badge variant="destructive"><PauseCircle size={10} className="mr-1" />Rate Limited</Badge>;
     case 'queued':
     default:
       return <Badge variant="muted"><Clock size={10} className="mr-1" />Queued</Badge>;
   }
 }
 
-const CONCURRENCY = 10;
+const CONCURRENCY_DEFAULT = 10;
 
 export default function ProgressView({ playlist, onBack }) {
   const pendingVideos = playlist.videos.filter((v) => v.status === 'pending');
 
+  const [concurrency, setConcurrency] = useState(null);
   const [videoStates, setVideoStates] = useState(() => {
     const map = {};
     pendingVideos.forEach((v) => {
@@ -33,7 +36,29 @@ export default function ProgressView({ playlist, onBack }) {
     return map;
   });
   const [done, setDone] = useState(false);
+  const [rateLimited, setRateLimited] = useState(false);
   const startedRef = useRef(false);
+  const rateLimitedRef = useRef(false);
+
+  // Load concurrency from settings
+  useEffect(() => {
+    window.electronAPI.getSettings().then((s) => {
+      setConcurrency(s.concurrency || CONCURRENCY_DEFAULT);
+    });
+  }, []);
+
+  // Start download once concurrency is loaded — only once
+  useEffect(() => {
+    if (concurrency === null) return;
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    if (pendingVideos.length > 0) {
+      runQueue(pendingVideos);
+    } else {
+      setDone(true);
+    }
+  }, [concurrency]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Progress listener
   useEffect(() => {
@@ -68,6 +93,11 @@ export default function ProgressView({ playlist, onBack }) {
         ...prev,
         [video.videoId]: { status: 'error', progress: 0, error: e?.message || String(e) },
       }));
+      // Detect rate limit
+      if (/rate.?limit/i.test(e?.message || '')) {
+        rateLimitedRef.current = true;
+        setRateLimited(true);
+      }
     }
   };
 
@@ -78,6 +108,10 @@ export default function ProgressView({ playlist, onBack }) {
 
     const worker = async (workerId) => {
       while (true) {
+        if (rateLimitedRef.current) {
+          console.log(`[worker ${workerId}] rate limited, stopping`);
+          break;
+        }
         const myIdx = idx++;
         if (myIdx >= total) {
           console.log(`[worker ${workerId}] no more items, exiting`);
@@ -91,31 +125,39 @@ export default function ProgressView({ playlist, onBack }) {
     };
 
     const promises = [];
-    for (let i = 0; i < Math.min(CONCURRENCY, total); i++) {
+    for (let i = 0; i < Math.min(concurrency || CONCURRENCY_DEFAULT, total); i++) {
       promises.push(worker(i));
     }
     await Promise.allSettled(promises);
     console.log('[queue] all workers finished');
+
+    // If rate limited, mark remaining queued items
+    if (rateLimitedRef.current) {
+      setVideoStates((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((id) => {
+          if (next[id].status === 'queued') {
+            next[id] = { status: 'rate-limited', progress: 0, error: 'Skipped — YouTube rate limit detected' };
+          }
+        });
+        return next;
+      });
+    }
+
     setDone(true);
   };
 
-  // Start download on mount — only once
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    if (pendingVideos.length > 0) {
-      runQueue(pendingVideos);
-    } else {
-      setDone(true);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const retryVideo = (video) => downloadOneVideo(video);
 
+  // eslint-disable-next-line
   const retryAllErrors = () => {
-    const errorVideos = pendingVideos.filter((v) => videoStates[v.videoId]?.status === 'error');
+    const errorVideos = pendingVideos.filter((v) => {
+      const s = videoStates[v.videoId]?.status;
+      return s === 'error' || s === 'rate-limited';
+    });
     if (!errorVideos.length) return;
+    rateLimitedRef.current = false;
+    setRateLimited(false);
     setVideoStates((prev) => {
       const next = { ...prev };
       errorVideos.forEach((v) => { next[v.videoId] = { status: 'queued', progress: 0, error: null }; });
@@ -126,7 +168,7 @@ export default function ProgressView({ playlist, onBack }) {
   };
 
   const doneCount = Object.values(videoStates).filter((s) => s.status === 'done' || s.status === 'skipped').length;
-  const errorCount = Object.values(videoStates).filter((s) => s.status === 'error').length;
+  const errorCount = Object.values(videoStates).filter((s) => s.status === 'error' || s.status === 'rate-limited').length;
   const totalCount = pendingVideos.length;
   const overallPct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
@@ -143,8 +185,10 @@ export default function ProgressView({ playlist, onBack }) {
               </span>
             </div>
             {done && (
-              <p className="text-sm mt-1 text-emerald-400">
-                {errorCount > 0 ? `Completed with ${errorCount} error(s).` : 'All downloads complete!'}
+              <p className={`text-sm mt-1 ${rateLimited ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {rateLimited
+                  ? `⚠️ Paused — YouTube rate limit detected. ${errorCount} track(s) skipped.`
+                  : errorCount > 0 ? `Completed with ${errorCount} error(s).` : 'All downloads complete!'}
               </p>
             )}
           </>

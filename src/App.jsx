@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Library, Settings, AlertTriangle, Music, ListMusic, Home, Download, Loader2, AlertCircle } from 'lucide-react';
+import { Library, Settings, RotateCcw, Music, ListMusic, Home, Download, Loader2, AlertCircle, Youtube } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import DashboardView from '@/pages/DashboardView';
@@ -8,6 +8,7 @@ import ScanView from '@/pages/ScanView';
 import ProgressView from '@/pages/ProgressView';
 import LibraryView from '@/pages/LibraryView';
 import ErrorsView from '@/pages/ErrorsView';
+import YoutubeView from '@/pages/YoutubeView';
 import SettingsPanel from '@/components/SettingsPanel';
 
 const TABS = [
@@ -15,7 +16,8 @@ const TABS = [
   { id: 'single', label: 'Single', Icon: Music },
   { id: 'playlist', label: 'Playlist', Icon: ListMusic },
   { id: 'library', label: 'Library', Icon: Library },
-  { id: 'errors', label: 'Errors', Icon: AlertTriangle },
+  { id: 'errors', label: 'Retry', Icon: RotateCcw },
+  { id: 'youtube', label: 'YouTube', Icon: Youtube },
 ];
 
 export default function App() {
@@ -132,6 +134,9 @@ export default function App() {
         </div>
         <div className={activeTab === 'errors' ? 'h-full' : 'hidden'}>
           <ErrorsView />
+        </div>
+        <div className={activeTab === 'youtube' ? 'h-full' : 'hidden'}>
+          <YoutubeView />
         </div>
       </div>
 

@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFile: (p) => ipcRenderer.invoke('library:open-file', p),
   openFolder: (p) => ipcRenderer.invoke('library:open-folder', p),
   deleteTrack: (videoId) => ipcRenderer.invoke('library:delete-track', videoId),
+  deleteError: (videoId) => ipcRenderer.invoke('library:delete-error', videoId),
+  deleteAllErrors: () => ipcRenderer.invoke('library:delete-all-errors'),
 
   // Scan History
   getHistory: () => ipcRenderer.invoke('history:get'),
@@ -40,6 +42,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scanPlaylist: (opts) => ipcRenderer.invoke('yt:scan-playlist', opts),
   downloadVideo: (opts) => ipcRenderer.invoke('yt:download-video', opts),
   cancelDownload: (videoId) => ipcRenderer.invoke('yt:cancel-download', videoId),
+
+  // Shell
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
 
   // Progress events from main
   onProgress: (cb) => {
