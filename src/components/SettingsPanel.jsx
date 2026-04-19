@@ -243,8 +243,11 @@ function UpdateLibsDialog({ onClose }) {
   const [updating, setUpdating] = useState(false);
   const [versions, setVersions] = useState(null);
   const [result, setResult] = useState(null);
+  const fetchedRef = React.useRef(false);
 
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     window.electronAPI.checkLibUpdates().then((v) => {
       setVersions(v);
       setLoading(false);
@@ -281,8 +284,8 @@ function UpdateLibsDialog({ onClose }) {
   });
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-      <div className="w-[440px] rounded-xl border border-border bg-zinc-900 shadow-xl p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[440px] rounded-xl border border-border bg-zinc-900 shadow-xl p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold flex items-center gap-2">
             <Package size={18} /> Update Libraries
