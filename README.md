@@ -29,18 +29,12 @@ A lightweight macOS app to download and manage music from YouTube — single tra
 
 ## 🚀 Getting Started
 
-### Option 1: Download Release
-1. Download the `.dmg` from [Releases](../../releases)
-2. Drag to Applications
-3. Open — the app will install dependencies automatically
-4. Paste a YouTube link and start downloading
-
 > ⚠️ The app is unsigned. If macOS blocks it, run:
 > ```bash
 > xattr -cr /Applications/YT\ Playlist\ Sync.app
 > ```
 
-### Option 2: Run from Source
+### Run from Source
 ```bash
 git clone <repo-url>
 cd download-youtube-playlist
