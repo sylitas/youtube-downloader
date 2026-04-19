@@ -173,7 +173,20 @@ async function checkAndInstallDeps() {
 
   if (failed) {
     app.quit();
+    return;
   }
+
+  // Install succeeded — force restart
+  await dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    buttons: ['Restart App'],
+    defaultId: 0,
+    title: 'Installation Complete',
+    message: 'Dependencies installed successfully!',
+    detail: `Installed: ${missing.join(', ')}\n\nThe app needs to restart to use the new libraries.`,
+  });
+  app.relaunch();
+  app.quit();
 }
 
 function createWindow() {
