@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron": "NODE_ENV=development electron .",
-    "dist": "npm run clean && vite build && electron-builder",
+    "build:app": "npm run clean && vite build && electron-builder",
     "clean": "rm -rf dist release"
   },
   "keywords": [],
