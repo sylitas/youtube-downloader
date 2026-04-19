@@ -142,30 +142,39 @@ async function checkAndInstallDeps() {
       'Missing Dependencies',
       `This app requires: ${missing.join(', ')}\n\nPlease install Homebrew first (https://brew.sh), then restart the app.`
     );
+    app.quit();
     return;
   }
 
-  const result = await dialog.showMessageBox(mainWindow || null, {
-    type: 'question',
-    buttons: ['Install Now', 'Later'],
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Install Now', 'Quit'],
     defaultId: 0,
+    cancelId: 1,
     title: 'Missing Dependencies',
-    message: `The following required tools are not installed:\n\n${missing.map(m => `• ${m}`).join('\n')}\n\nInstall them now via Homebrew?`,
+    message: 'Missing required libraries',
+    detail: `The following tools are required but not installed:\n\n${missing.map(m => '- ' + m).join('\n')}\n\nWould you like to install them now via Homebrew?\nThe app cannot run without these dependencies.`,
   });
 
-  if (result.response === 0) {
-    for (const pkg of missing) {
-      try {
-        await brewInstall(pkg);
-      } catch (e) {
-        dialog.showErrorBox('Install Failed', `Failed to install ${pkg}: ${e.message}`);
-      }
+  if (result.response === 1) {
+    app.quit();
+    return;
+  }
+
+  let failed = false;
+  for (const pkg of missing) {
+    try {
+      await brewInstall(pkg);
+    } catch (e) {
+      dialog.showErrorBox('Install Failed', `Failed to install ${pkg}: ${e.message}`);
+      failed = true;
     }
   }
-}
 
-function createWindow() {
-  // Ensure default output dir exists on first launch
+  if (failed) {
+    app.quit();
+  }
+}
   const settings = loadSettings();
   const outputDir = resolveDir(settings.outputDir);
   if (!fs.existsSync(outputDir)) {
