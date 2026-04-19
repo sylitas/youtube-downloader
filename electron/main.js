@@ -138,56 +138,36 @@ async function checkAndInstallDeps() {
 
   // Check if brew exists
   if (!commandExists('brew')) {
-    dialog.showErrorBox(
-      'Missing Dependencies',
-      `This app requires: ${missing.join(', ')}\n\nPlease install Homebrew first (https://brew.sh), then restart the app.`
-    );
-    app.quit();
+    mainWindow.webContents.send('deps:status', { type: 'no-brew' });
     return;
   }
 
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'warning',
-    buttons: ['Install Now', 'Quit'],
-    defaultId: 0,
-    cancelId: 1,
-    title: 'Missing Dependencies',
-    message: 'Missing required libraries',
-    detail: `The following tools are required but not installed:\n\n${missing.map(m => '- ' + m).join('\n')}\n\nWould you like to install them now via Homebrew?\nThe app cannot run without these dependencies.`,
-  });
+  // Notify renderer about missing deps
+  mainWindow.webContents.send('deps:status', { type: 'missing', missing });
+}
 
-  if (result.response === 1) {
-    app.quit();
-    return;
-  }
+// IPC: user chose to install deps
+ipcMain.handle('deps:install', async () => {
+  const missing = [];
+  if (!commandExists('yt-dlp')) missing.push('yt-dlp');
+  if (!commandExists('AtomicParsley')) missing.push('atomicparsley');
 
-  let failed = false;
+  const results = [];
   for (const pkg of missing) {
     try {
       await brewInstall(pkg);
+      results.push({ pkg, ok: true });
     } catch (e) {
-      dialog.showErrorBox('Install Failed', `Failed to install ${pkg}: ${e.message}`);
-      failed = true;
+      results.push({ pkg, ok: false, error: e.message });
     }
   }
+  return results;
+});
 
-  if (failed) {
-    app.quit();
-    return;
-  }
-
-  // Install succeeded — force restart
-  await dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    buttons: ['Restart App'],
-    defaultId: 0,
-    title: 'Installation Complete',
-    message: 'Dependencies installed successfully!',
-    detail: `Installed: ${missing.join(', ')}\n\nThe app needs to restart to use the new libraries.`,
-  });
+ipcMain.handle('deps:restart', () => {
   app.relaunch();
   app.quit();
-}
+});
 
 function createWindow() {
   const settings = loadSettings();

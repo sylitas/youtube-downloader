@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkLibs: () => ipcRenderer.invoke('libs:check'),
   checkLibUpdates: () => ipcRenderer.invoke('libs:check-updates'),
   updateLibs: () => ipcRenderer.invoke('libs:update'),
+  installDeps: () => ipcRenderer.invoke('deps:install'),
+  restartApp: () => ipcRenderer.invoke('deps:restart'),
+  onDepsStatus: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('deps:status', handler);
+    return () => ipcRenderer.removeListener('deps:status', handler);
+  },
 
   // Library
   getLibrary: () => ipcRenderer.invoke('library:get'),
