@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, RotateCcw, ChevronDown, ChevronRight, AlertCircle, FolderOpen, Music, Copy, Check, Trash2, Search, X, Loader2, Download } from 'lucide-react';
+import { RefreshCw, RotateCcw, ChevronDown, ChevronRight, AlertCircle, FolderOpen, Music, Copy, Check, Trash2, Search, X, Loader2, Download, ThumbsUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -367,8 +367,8 @@ export default function ErrorsView() {
 
         {/* Empty state */}
         {!loading && totalErrors === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground pt-16">
-            <AlertCircle size={40} className="opacity-20" />
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground -mt-16">
+            <ThumbsUp size={40} className="opacity-20" />
             <p className="text-sm">No download errors. All good!</p>
           </div>
         )}

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Library, Settings, RotateCcw, Music, ListMusic, Home, Download, Loader2, AlertCircle, Youtube } from 'lucide-react';
+import { Library, Settings, RotateCcw, Music, ListMusic, Download, Loader2, AlertCircle, Youtube } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import DashboardView from '@/pages/DashboardView';
 import SingleView from '@/pages/SingleView';
+import DashboardView from '@/pages/DashboardView';
 import ScanView from '@/pages/ScanView';
 import ProgressView from '@/pages/ProgressView';
 import LibraryView from '@/pages/LibraryView';
@@ -11,17 +11,19 @@ import ErrorsView from '@/pages/ErrorsView';
 import YoutubeView from '@/pages/YoutubeView';
 import SettingsPanel from '@/components/SettingsPanel';
 
-const TABS = [
-  { id: 'dashboard', label: 'Home', Icon: Home },
+const TABS_LEFT = [
+  { id: 'youtube', label: 'YouTube', Icon: Youtube },
   { id: 'single', label: 'Single', Icon: Music },
   { id: 'playlist', label: 'Playlist', Icon: ListMusic },
-  { id: 'library', label: 'Library', Icon: Library },
   { id: 'errors', label: 'Retry', Icon: RotateCcw },
-  { id: 'youtube', label: 'YouTube', Icon: Youtube },
+];
+
+const TABS_RIGHT = [
+  { id: 'library', label: 'Library', Icon: Library },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(null); // null = show dashboard
   const [downloadScreen, setDownloadScreen] = useState('scan');
   const [currentPlaylist, setCurrentPlaylist] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -88,7 +90,24 @@ export default function App() {
       {/* Titlebar / drag region */}
       <div className="drag-region h-10 flex items-center justify-between pl-20 pr-4 shrink-0 border-b border-border">
         <div className="no-drag flex items-center gap-0.5">
-          {TABS.map(({ id, label, Icon }) => (
+          {TABS_LEFT.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+                activeTab === id
+                  ? 'bg-zinc-800 text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-zinc-800/50'
+              )}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+          {/* Divider */}
+          <div className="w-px h-5 bg-zinc-700 mx-1.5" />
+          {TABS_RIGHT.map(({ id, label, Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -117,8 +136,13 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
-        <div className={activeTab === 'dashboard' ? 'h-full' : 'hidden'}>
-          <DashboardView onNavigate={handleNavigate} />
+        {activeTab === null && (
+          <div className="h-full">
+            <DashboardView onNavigate={(tab) => setActiveTab(tab)} />
+          </div>
+        )}
+        <div className={activeTab === 'youtube' ? 'h-full' : 'hidden'}>
+          <YoutubeView />
         </div>
         <div className={activeTab === 'single' ? 'h-full' : 'hidden'}>
           <SingleView />
@@ -129,14 +153,11 @@ export default function App() {
             <ProgressView playlist={currentPlaylist} onBack={handleBack} />
           )}
         </div>
-        <div className={activeTab === 'library' ? 'h-full' : 'hidden'}>
-          <LibraryView />
-        </div>
         <div className={activeTab === 'errors' ? 'h-full' : 'hidden'}>
           <ErrorsView />
         </div>
-        <div className={activeTab === 'youtube' ? 'h-full' : 'hidden'}>
-          <YoutubeView />
+        <div className={activeTab === 'library' ? 'h-full' : 'hidden'}>
+          <LibraryView />
         </div>
       </div>
 

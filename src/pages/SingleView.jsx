@@ -256,11 +256,11 @@ export default function SingleView() {
       {/* Spacer to push history to bottom */}
       <div className="flex-1" />
 
-      {/* Empty state */}
-      {!videoInfo && !scanning && recentDownloads.length === 0 && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center gap-3 text-muted-foreground pointer-events-none" style={{ top: '80px' }}>
+      {/* Empty state — show when no video scanned */}
+      {!videoInfo && !scanning && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center gap-3 text-muted-foreground pointer-events-none" style={{ top: '80px', bottom: '80px' }}>
           <Music size={40} className="opacity-20" />
-          <p className="text-sm">Paste a YouTube video URL to download a single track.</p>
+          <p className="text-sm">Paste a YouTube video URL above to get started.</p>
         </div>
       )}
 
