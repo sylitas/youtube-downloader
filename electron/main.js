@@ -79,6 +79,14 @@ let mainWindow;
 
 // ─── Library dependency helpers ───────────────────────────────────────────────
 
+// Ensure Homebrew paths are in PATH (macOS .app bundles don't inherit shell PATH)
+const BREW_PATHS = ['/opt/homebrew/bin', '/usr/local/bin'];
+for (const p of BREW_PATHS) {
+  if (!process.env.PATH?.includes(p)) {
+    process.env.PATH = `${p}:${process.env.PATH || ''}`;
+  }
+}
+
 function commandExists(cmd) {
   try { execSync(`which ${cmd}`, { stdio: 'ignore' }); return true; } catch (_) { return false; }
 }
