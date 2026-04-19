@@ -1,8 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, RotateCcw, ChevronDown, ChevronRight, AlertCircle, FolderOpen, Music, Copy, Check, Trash2 } from 'lucide-react';
+import { RefreshCw, RotateCcw, ChevronDown, ChevronRight, AlertCircle, FolderOpen, Music, Copy, Check, Trash2, Search, X, Loader2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+
+function formatViews(n) {
+  if (!n) return '0';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toString();
+}
 
 export default function ErrorsView() {
   const [library, setLibrary] = useState(null);
@@ -11,7 +19,11 @@ export default function ErrorsView() {
   const [retryingIds, setRetryingIds] = useState({});
   const [retryProgress, setRetryProgress] = useState({});
   const [copiedId, setCopiedId] = useState(null);
-  const [concurrency, setConcurrency] = useState(10);
+  const [searchItem, setSearchItem] = useState(null); // item being searched
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [downloadingAlt, setDownloadingAlt] = useState(null);
+  const [altVideoMap, setAltVideoMap] = useState({}); // newVideoId -> originalVideoId
 
   const load = async () => {
     setLoading(true);
@@ -22,17 +34,15 @@ export default function ErrorsView() {
 
   useEffect(() => { load(); }, []);
 
-  // Load concurrency from settings
-  useEffect(() => {
-    window.electronAPI.getSettings().then((s) => {
-      if (s.concurrency) setConcurrency(s.concurrency);
-    });
-  }, []);
-
-  // Listen to progress events for retries
+  // Listen to progress events for retries (including alt downloads)
   useEffect(() => {
     const unsubscribe = window.electronAPI.onProgress(({ videoId, progress }) => {
-      setRetryProgress((prev) => ({ ...prev, [videoId]: progress }));
+      // Map alt video progress to original record
+      setAltVideoMap((map) => {
+        const targetId = map[videoId] || videoId;
+        setRetryProgress((prev) => ({ ...prev, [targetId]: progress }));
+        return map;
+      });
     });
     return unsubscribe;
   }, []);
@@ -105,30 +115,18 @@ export default function ErrorsView() {
     }
   };
 
-  // Queue runner with concurrency
-  const runQueue = async (items) => {
-    let idx = 0;
-    const worker = async () => {
-      while (true) {
-        const myIdx = idx++;
-        if (myIdx >= items.length) break;
-        await retryOne(items[myIdx]);
-      }
-    };
-    const promises = [];
-    for (let i = 0; i < Math.min(concurrency, items.length); i++) {
-      promises.push(worker());
-    }
-    await Promise.allSettled(promises);
-  };
-
+  // Sequential retry — one at a time
   const retryPlaylist = async (playlist) => {
-    await runQueue(playlist.items);
+    for (const item of playlist.items) {
+      await retryOne(item);
+    }
   };
 
   const retryAll = async () => {
     const allItems = playlistList.flatMap((p) => p.items);
-    await runQueue(allItems);
+    for (const item of allItems) {
+      await retryOne(item);
+    }
   };
 
   const totalErrors = errorItems.length;
@@ -142,6 +140,71 @@ export default function ErrorsView() {
   const deleteAll = async () => {
     await window.electronAPI.deleteAllErrors();
     await load();
+  };
+
+  const handleSearchSimilar = async (item) => {
+    setSearchItem(item);
+    setSearchResults([]);
+    setSearching(true);
+    try {
+      const results = await window.electronAPI.searchSimilar(item.title);
+      setSearchResults(results);
+    } catch (e) {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleDownloadAlt = async (result) => {
+    if (!searchItem) return;
+    const originalVideoId = searchItem.videoId;
+    const playlistId = searchItem.playlistId;
+    const playlistTitle = searchItem.playlistTitle;
+    const source = searchItem.source || 'playlist';
+
+    // Close dialog immediately
+    setSearchItem(null);
+    setSearchResults([]);
+
+    // Map new videoId progress to original record
+    setAltVideoMap((prev) => ({ ...prev, [result.videoId]: originalVideoId }));
+
+    // Show downloading state on the original record
+    setRetryingIds((prev) => ({ ...prev, [originalVideoId]: true }));
+    setRetryProgress((prev) => ({ ...prev, [originalVideoId]: 0 }));
+
+    try {
+      // Delete old error record
+      await window.electronAPI.deleteError(originalVideoId);
+      // Download new video into same playlist
+      await window.electronAPI.downloadVideo({
+        video: {
+          videoId: result.videoId,
+          title: result.title,
+          url: result.url,
+          thumbnail: result.thumbnail,
+        },
+        playlistId,
+        playlistTitle,
+        source,
+      });
+      await load();
+    } catch (e) {
+      await load();
+    } finally {
+      setRetryingIds((prev) => ({ ...prev, [originalVideoId]: false }));
+      setRetryProgress((prev) => {
+        const next = { ...prev };
+        delete next[originalVideoId];
+        return next;
+      });
+      setAltVideoMap((prev) => {
+        const next = { ...prev };
+        delete next[result.videoId];
+        return next;
+      });
+    }
   };
 
   return (
@@ -258,7 +321,7 @@ export default function ErrorsView() {
                           </div>
                           {isRetrying ? (
                             <Badge variant="secondary" className="shrink-0">
-                              <RefreshCw size={10} className="mr-1 animate-spin" />Retrying
+                              <RefreshCw size={10} className="mr-1 animate-spin" />Downloading
                             </Badge>
                           ) : (
                             <div className="flex items-center gap-1 shrink-0">
@@ -268,8 +331,18 @@ export default function ErrorsView() {
                                 className="h-7 px-2 text-xs"
                                 onClick={(e) => { e.stopPropagation(); retryOne(item); }}
                                 disabled={currentlyRetrying > 0}
+                                title="Retry"
                               >
-                                <RotateCcw size={12} className="mr-1" /> Retry
+                                <RotateCcw size={12} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-950/30"
+                                onClick={(e) => { e.stopPropagation(); handleSearchSimilar(item); }}
+                                title="Find similar video on YouTube"
+                              >
+                                <Search size={12} />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -300,6 +373,83 @@ export default function ErrorsView() {
           </div>
         )}
       </div>
+
+      {/* Search Similar Dialog */}
+      {searchItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setSearchItem(null); setSearchResults([]); }}>
+          <div className="w-[520px] max-h-[70vh] flex flex-col rounded-xl border border-border bg-zinc-900 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border shrink-0">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold">Find Similar</h3>
+                <p className="text-xs text-muted-foreground truncate mt-0.5">{searchItem.title}</p>
+              </div>
+              <button onClick={() => { setSearchItem(null); setSearchResults([]); }} className="text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-3">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {searching && (
+                <div className="flex items-center justify-center py-8 gap-2">
+                  <Loader2 size={18} className="animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Searching YouTube…</span>
+                </div>
+              )}
+
+              {!searching && searchResults.length === 0 && (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-sm text-muted-foreground">No results found.</p>
+                </div>
+              )}
+
+              {!searching && searchResults.length > 0 && (
+                <div className="space-y-2">
+                  {searchResults.map((result) => (
+                    <div
+                      key={result.videoId}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover:bg-zinc-800/50 transition-colors"
+                    >
+                      {result.thumbnail ? (
+                        <img
+                          src={result.thumbnail}
+                          alt=""
+                          className="w-16 h-10 rounded object-cover shrink-0 bg-zinc-800"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-16 h-10 rounded bg-zinc-800 shrink-0 flex items-center justify-center">
+                          <Music size={14} className="text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate">{result.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {result.uploader}{result.duration ? ` · ${result.duration}` : ''}{result.viewCount ? ` · ${formatViews(result.viewCount)} views` : ''}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="shrink-0 h-7 px-2 text-xs"
+                        disabled={downloadingAlt === result.videoId}
+                        onClick={() => handleDownloadAlt(result)}
+                      >
+                        {downloadingAlt === result.videoId ? (
+                          <><Loader2 size={12} className="mr-1 animate-spin" /> Downloading…</>
+                        ) : (
+                          <><Download size={12} className="mr-1" /> Download</>
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

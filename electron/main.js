@@ -429,6 +429,175 @@ ipcMain.handle('library:delete-all-errors', () => {
   return errorIds.length;
 });
 
+// ─── IPC: Sync to Apple Music ─────────────────────────────────────────────
+
+function runAppleScript(script) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('osascript', ['-'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('close', (code) => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || `osascript exited with code ${code}`));
+    });
+    proc.on('error', (e) => reject(e));
+    proc.stdin.write(script);
+    proc.stdin.end();
+  });
+}
+
+// Escape string for AppleScript: only " and \ need escaping
+function asString(str) {
+  return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+ipcMain.handle('music:get-playlists', async () => {
+  const result = await runAppleScript('tell application "Music" to get name of every user playlist');
+  if (!result) return [];
+  return result.split(', ').map((n) => n.trim()).filter(Boolean);
+});
+
+ipcMain.handle('music:sync-playlists', async (event) => {
+  const library = loadLibrary();
+  const items = Object.values(library.items).filter((item) => item.status === 'done');
+
+  // Group by playlist
+  const playlists = {};
+  items.forEach((item) => {
+    const name = item.playlistTitle || 'Unknown';
+    if (!playlists[name]) playlists[name] = [];
+    playlists[name].push(item);
+  });
+
+  // Get existing Apple Music playlists
+  let existingPlaylists = [];
+  try {
+    const result = await runAppleScript('tell application "Music" to get name of every user playlist');
+    if (result) existingPlaylists = result.split(', ').map((n) => n.trim());
+  } catch (_) {}
+
+  // Build a map of ALL tracks in Music Library (name -> id) for fuzzy matching
+  let allMusicTracks = []; // [{name, id}]
+  try {
+    const namesRaw = await runAppleScript(
+      `tell application "Music"
+        set output to ""
+        repeat with t in (every track of playlist "Library")
+          set output to output & (database ID of t) & "\t" & (name of t) & linefeed
+        end repeat
+        return output
+      end tell`
+    );
+    if (namesRaw) {
+      namesRaw.split('\n').forEach((line) => {
+        const tab = line.indexOf('\t');
+        if (tab > 0) {
+          allMusicTracks.push({ id: line.substring(0, tab).trim(), name: line.substring(tab + 1).trim() });
+        }
+      });
+    }
+  } catch (_) {}
+
+  // Helper: find track in Music Library by name matching
+  const findTrackInLibrary = (title) => {
+    const clean = title.replace(/\s*\[\w+\]\s*$/, '').trim().toLowerCase();
+    // Exact match first
+    let match = allMusicTracks.find((t) => t.name.toLowerCase() === clean);
+    if (match) return match;
+    // Music name contains our clean title
+    match = allMusicTracks.find((t) => t.name.toLowerCase().includes(clean));
+    if (match) return match;
+    // Our clean title contains Music name (for Japanese-renamed tracks)
+    match = allMusicTracks.find((t) => clean.includes(t.name.toLowerCase()) && t.name.length > 3);
+    return match || null;
+  };
+
+  const results = { created: [], skipped: [], added: 0, alreadyIn: 0, notFound: [], errors: [] };
+  const playlistEntries = Object.entries(playlists);
+
+  for (let pi = 0; pi < playlistEntries.length; pi++) {
+    const [playlistName, tracks] = playlistEntries[pi];
+
+    try {
+      // Create playlist if it doesn't exist
+      if (!existingPlaylists.includes(playlistName)) {
+        await runAppleScript(`tell application "Music" to make new user playlist with properties {name:${asString(playlistName)}}`);
+        results.created.push(playlistName);
+      } else {
+        results.skipped.push(playlistName);
+      }
+
+      // Get existing track names in this playlist to avoid duplicates
+      let existingTrackNames = new Set();
+      try {
+        const namesRaw = await runAppleScript(
+          `tell application "Music" to get name of every track of user playlist ${asString(playlistName)}`
+        );
+        if (namesRaw) {
+          namesRaw.split(', ').forEach((n) => existingTrackNames.add(n.trim().toLowerCase()));
+        }
+      } catch (_) {} // Empty playlist throws
+
+      // Add tracks that aren't already in the playlist
+      for (const track of tracks) {
+        const cleanTitle = track.title.replace(/\s*\[\w+\]\s*$/, '').trim();
+
+        // Check if already in playlist
+        if (existingTrackNames.has(cleanTitle.toLowerCase()) || existingTrackNames.has(track.title.toLowerCase())) {
+          results.alreadyIn++;
+          continue;
+        }
+
+        // Also check if any Music Library name for this track is already in playlist
+        const musicMatch = findTrackInLibrary(track.title);
+        if (musicMatch && existingTrackNames.has(musicMatch.name.toLowerCase())) {
+          results.alreadyIn++;
+          continue;
+        }
+
+        try {
+          if (musicMatch) {
+            // Found in Music Library by fuzzy match — duplicate by database ID
+            await runAppleScript(
+              `tell application "Music"
+                set theTrack to first track of playlist "Library" whose database ID is ${musicMatch.id}
+                duplicate theTrack to user playlist ${asString(playlistName)}
+              end tell`
+            );
+            results.added++;
+          } else if (track.filePath && fs.existsSync(track.filePath)) {
+            // Not in Music Library but file exists — add then duplicate
+            await runAppleScript(
+              `tell application "Music"
+                set theTrack to add POSIX file ${asString(track.filePath)}
+                duplicate theTrack to user playlist ${asString(playlistName)}
+              end tell`
+            );
+            results.added++;
+          } else {
+            results.notFound.push(track.title);
+          }
+        } catch (e) {
+          results.errors.push({ track: track.title, error: e.message });
+        }
+      }
+
+      // Send progress
+      event.sender.send('music:sync-progress', {
+        playlist: playlistName,
+        total: playlistEntries.length,
+        done: pi + 1,
+      });
+    } catch (e) {
+      results.errors.push({ playlist: playlistName, error: e.message });
+    }
+  }
+
+  return results;
+});
+
 // ─── IPC: Scan playlist ───────────────────────────────────────────────────────
 
 ipcMain.handle('yt:scan-playlist', async (event, { url, cookiesFile }) => {
@@ -643,6 +812,53 @@ ipcMain.handle('yt:cancel-download', (_, videoId) => {
     delete activeProcs[videoId];
   }
   return true;
+});
+
+// ─── IPC: Search similar & download ─────────────────────────────────────────
+
+ipcMain.handle('yt:search-similar', async (_, query) => {
+  return new Promise((resolve, reject) => {
+    const settings = loadSettings();
+    const args = [
+      `ytsearch5:${query}`,
+      '--dump-json',
+      '--flat-playlist',
+      '--no-warnings',
+    ];
+    if (settings.cookiesFile) args.push('--cookies', settings.cookiesFile);
+
+    const proc = spawn('yt-dlp', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || 'Search failed'));
+        return;
+      }
+      try {
+        const results = stdout.trim().split('\n')
+          .filter(Boolean)
+          .map((line) => {
+            const data = JSON.parse(line);
+            return {
+              videoId: data.id,
+              title: data.title,
+              url: data.url || `https://www.youtube.com/watch?v=${data.id}`,
+              thumbnail: data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[data.thumbnails.length - 1].url : null),
+              duration: data.duration_string || '',
+              uploader: data.uploader || '',
+              viewCount: data.view_count || 0,
+            };
+          });
+        resolve(results);
+      } catch (e) {
+        reject(new Error('Failed to parse search results: ' + e.message));
+      }
+    });
+    proc.on('error', () => reject(new Error('yt-dlp not found')));
+  });
 });
 
 // ─── IPC: Playlist folders ────────────────────────────────────────────────────

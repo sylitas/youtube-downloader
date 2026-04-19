@@ -42,9 +42,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scanPlaylist: (opts) => ipcRenderer.invoke('yt:scan-playlist', opts),
   downloadVideo: (opts) => ipcRenderer.invoke('yt:download-video', opts),
   cancelDownload: (videoId) => ipcRenderer.invoke('yt:cancel-download', videoId),
+  searchSimilar: (query) => ipcRenderer.invoke('yt:search-similar', query),
 
   // Shell
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+
+  // Apple Music sync
+  getMusicPlaylists: () => ipcRenderer.invoke('music:get-playlists'),
+  syncToAppleMusic: () => ipcRenderer.invoke('music:sync-playlists'),
+  onMusicSyncProgress: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('music:sync-progress', handler);
+    return () => ipcRenderer.removeListener('music:sync-progress', handler);
+  },
 
   // Progress events from main
   onProgress: (cb) => {
