@@ -139,105 +139,111 @@ export default function App() {
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
 
       {/* Deps overlay */}
-      {depsStatus && depsStatus !== 'installed' && (
-        <DepsOverlay
-          status={depsStatus}
-          missing={depsMissing}
-          error={depsError}
-          onInstall={handleInstallDeps}
-          onQuit={handleQuit}
-        />
-      )}
+      {depsStatus && depsStatus !== 'done' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/95 backdrop-blur-sm">
+          <div className="w-[380px] rounded-2xl border border-border bg-zinc-900 shadow-2xl overflow-hidden">
+            {/* Header gradient bar */}
+            <div className="h-1.5 bg-gradient-to-r from-red-500 via-pink-500 to-purple-500" />
 
-      {/* Deps installed — restart required */}
-      {depsStatus === 'installed' && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className="w-14 h-14 rounded-full bg-emerald-950 flex items-center justify-center">
-              <Download size={24} className="text-emerald-400" />
+            <div className="p-8 flex flex-col items-center text-center gap-4">
+              {depsStatus === 'missing' && (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-amber-950/50 flex items-center justify-center">
+                    <AlertCircle size={28} className="text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold">Missing Dependencies</h2>
+                    <p className="text-xs text-muted-foreground mt-1">The following libraries are required to run this app</p>
+                  </div>
+                  <div className="w-full space-y-1.5">
+                    {depsMissing.map((m) => (
+                      <div key={m} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/60 border border-border">
+                        <div className="w-2 h-2 rounded-full bg-amber-400" />
+                        <span className="text-sm font-mono">{m}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Will be installed via Homebrew</p>
+                  <div className="flex gap-2 w-full mt-1">
+                    <Button variant="ghost" className="flex-1" onClick={handleQuit}>Quit</Button>
+                    <Button className="flex-1" onClick={handleInstallDeps}>
+                      <Download size={14} className="mr-1.5" /> Install
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {depsStatus === 'installing' && (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center">
+                    <Loader2 size={28} className="text-foreground animate-spin" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold">Installing</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Please wait<AnimatedDots />
+                    </p>
+                  </div>
+                  <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden mt-2">
+                    <div className="h-full bg-gradient-to-r from-pink-500 to-purple-500 rounded-full animate-progress" />
+                  </div>
+                </>
+              )}
+
+              {depsStatus === 'installed' && (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-950/50 flex items-center justify-center">
+                    <Download size={28} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold">Installation Complete</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Please close and reopen the app to get started.
+                    </p>
+                  </div>
+                  <Button className="w-full mt-1" onClick={handleQuit}>Close App</Button>
+                </>
+              )}
+
+              {depsStatus === 'failed' && (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-red-950/50 flex items-center justify-center">
+                    <AlertCircle size={28} className="text-red-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-red-400">Installation Failed</h2>
+                    {depsError && (
+                      <p className="text-[11px] text-red-400/80 font-mono mt-2 bg-red-950/20 px-3 py-2 rounded-lg text-left max-h-20 overflow-auto">{depsError}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 w-full mt-1">
+                    <Button variant="ghost" className="flex-1" onClick={handleQuit}>Quit</Button>
+                    <Button className="flex-1" onClick={handleInstallDeps}>
+                      <Download size={14} className="mr-1.5" /> Retry
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {depsStatus === 'no-brew' && (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-red-950/50 flex items-center justify-center">
+                    <AlertCircle size={28} className="text-red-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold">Homebrew Required</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Install Homebrew first, then reopen the app.
+                    </p>
+                    <p className="text-xs font-mono text-muted-foreground mt-2 bg-zinc-800 px-3 py-1.5 rounded">https://brew.sh</p>
+                  </div>
+                  <Button variant="ghost" className="w-full mt-1" onClick={handleQuit}>Quit</Button>
+                </>
+              )}
             </div>
-            <h2 className="text-lg font-semibold">Installation Complete!</h2>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              All dependencies are installed. Restart the app to start using it.
-            </p>
-            <Button onClick={handleRestart} className="mt-2">
-              Restart App
-            </Button>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function DepsOverlay({ status, missing, error, onInstall, onQuit }) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80">
-      <div className="flex flex-col items-center gap-5 text-center max-w-sm">
-        {status === 'missing' && (
-          <>
-            <div className="w-14 h-14 rounded-full bg-amber-950 flex items-center justify-center">
-              <AlertCircle size={24} className="text-amber-400" />
-            </div>
-            <h2 className="text-lg font-semibold">Missing Dependencies</h2>
-            <p className="text-sm text-muted-foreground">
-              The following libraries are required:
-            </p>
-            <div className="flex flex-col gap-1">
-              {missing.map((m) => (
-                <span key={m} className="text-sm font-mono bg-zinc-800 px-3 py-1 rounded">{m}</span>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              They will be installed via Homebrew.
-            </p>
-            <div className="flex gap-3 mt-2">
-              <Button variant="ghost" onClick={onQuit}>Quit</Button>
-              <Button onClick={onInstall}>
-                <Download size={14} className="mr-1.5" /> Install Now
-              </Button>
-            </div>
-          </>
-        )}
-
-        {status === 'installing' && (
-          <>
-            <Loader2 size={40} className="text-muted-foreground animate-spin" />
-            <h2 className="text-lg font-semibold">Installing dependencies</h2>
-            <p className="text-sm text-muted-foreground">
-              Please wait<AnimatedDots />
-            </p>
-          </>
-        )}
-
-        {status === 'failed' && (
-          <>
-            <div className="w-14 h-14 rounded-full bg-red-950 flex items-center justify-center">
-              <AlertCircle size={24} className="text-red-400" />
-            </div>
-            <h2 className="text-lg font-semibold text-red-400">Installation Failed</h2>
-            {error && <p className="text-xs text-red-400 font-mono bg-red-950/30 px-3 py-2 rounded max-w-xs">{error}</p>}
-            <div className="flex gap-3 mt-2">
-              <Button variant="ghost" onClick={onQuit}>Quit</Button>
-              <Button onClick={onInstall}>Retry</Button>
-            </div>
-          </>
-        )}
-
-        {status === 'no-brew' && (
-          <>
-            <div className="w-14 h-14 rounded-full bg-red-950 flex items-center justify-center">
-              <AlertCircle size={24} className="text-red-400" />
-            </div>
-            <h2 className="text-lg font-semibold">Homebrew Required</h2>
-            <p className="text-sm text-muted-foreground">
-              This app needs Homebrew to install dependencies.
-              <br />Visit <span className="text-foreground font-mono text-xs">https://brew.sh</span> to install it, then restart the app.
-            </p>
-            <Button variant="ghost" onClick={onQuit} className="mt-2">Quit</Button>
-          </>
-        )}
-      </div>
     </div>
   );
 }
