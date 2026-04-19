@@ -175,6 +175,8 @@ async function checkAndInstallDeps() {
     app.quit();
   }
 }
+
+function createWindow() {
   const settings = loadSettings();
   const outputDir = resolveDir(settings.outputDir);
   if (!fs.existsSync(outputDir)) {
