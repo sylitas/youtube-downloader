@@ -33,6 +33,16 @@ A lightweight macOS app to download and manage music from YouTube — single tra
 
 ## 🚀 Getting Started
 
+### Install from Release
+
+1. Download the `.dmg` from [Releases](https://github.com/sylitas/youtube-downloader/releases)
+2. Open the DMG and drag the app to Applications
+3. **Important:** The app is unsigned. Before opening, run in Terminal:
+   ```bash
+   xattr -cr /Applications/YT\ Playlist\ Sync.app
+   ```
+4. Open the app — it will auto-install dependencies (yt-dlp, AtomicParsley) via Homebrew
+
 ### Run from Source
 
 ```bash
@@ -48,11 +58,6 @@ npm run dev
 # Production build (creates .dmg in release/)
 npm run dist
 ```
-
-> ⚠️ The app is unsigned. If macOS blocks it after install, run:
-> ```bash
-> xattr -cr /Applications/YT\ Playlist\ Sync.app
-> ```
 
 ## 🏗️ Tech Stack
 
