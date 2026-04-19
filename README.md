@@ -2,26 +2,30 @@
 
 **Your YouTube music, offline.**
 
-A lightweight macOS app to download and manage music from YouTube — single tracks or entire playlists.
+A lightweight macOS app to download and manage music from YouTube — single tracks or entire playlists, with Apple Music integration.
 
 ![Electron](https://img.shields.io/badge/Electron-34-blue) ![React](https://img.shields.io/badge/React-18-61dafb) ![License](https://img.shields.io/badge/License-ISC-green)
 
 ## ✨ Features
 
 - **Single Track** — Paste a video URL, pick a playlist folder, download
-- **Playlist Sync** — Paste a playlist URL, scan all tracks, download in parallel (10 concurrent)
-- **Smart Library** — Tracks organized by playlist folders in `~/Music/YT`
-- **Download Manager** — Real-time progress, retry on failure, auto quality fallback (320K → 128K)
+- **Playlist Sync** — Paste a playlist URL, scan all tracks, download with configurable concurrency
+- **Library** — Album-style grid view organized by playlist, click into track lists
+- **Apple Music Sync** — One-click sync: creates playlists and adds tracks to Apple Music
+- **YouTube Browser** — Built-in YouTube tab for browsing without leaving the app
+- **Download Manager** — Real-time progress, auto quality fallback (320K → 128K)
+- **Rate Limit Protection** — Auto-detects YouTube rate limits, pauses queue, marks remaining tracks
+- **Find Similar** — When a download fails, search YouTube for alternative versions
+- **Error Recovery** — Dedicated Retry tab with single retry, find similar, or bulk retry
 - **Thumbnail & Metadata** — Album art and tags embedded in every MP3
 - **Scan History** — Quick re-scan from previous sessions
-- **Error Recovery** — Dedicated Errors tab, retry individual or bulk
 - **Cookie Auth** — Support private/unlisted playlists via `cookies.txt`
 - **Auto Setup** — Installs required dependencies on first launch
 - **Factory Reset** — Selectively clear downloads, library, history, or settings
 
 ## 📋 Requirements
 
-- **macOS** (Apple Silicon)
+- **macOS** (Apple Silicon or Intel)
 - **Homebrew** — for automatic dependency installation
 - The app will auto-install these via Homebrew on first launch:
   - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube downloader
@@ -29,18 +33,26 @@ A lightweight macOS app to download and manage music from YouTube — single tra
 
 ## 🚀 Getting Started
 
-> ⚠️ The app is unsigned. If macOS blocks it, run:
-> ```bash
-> xattr -cr /Applications/YT\ Playlist\ Sync.app
-> ```
-
 ### Run from Source
+
 ```bash
-git clone <repo-url>
+git clone https://github.com/sylitas/youtube-downloader.git
 cd download-youtube-playlist
 npm install
 npm run dev
 ```
+
+### Build
+
+```bash
+# Production build (creates .dmg in release/)
+npm run dist
+```
+
+> ⚠️ The app is unsigned. If macOS blocks it after install, run:
+> ```bash
+> xattr -cr /Applications/YT\ Playlist\ Sync.app
+> ```
 
 ## 🏗️ Tech Stack
 
@@ -55,7 +67,7 @@ npm run dev
 
 ```
 electron/
-  main.js            — Main process (IPC, downloads, manifest)
+  main.js            — Main process (IPC, downloads, Apple Music sync)
   preload.js         — Context bridge
 src/
   App.jsx            — Layout, tabs, deps overlay
@@ -63,21 +75,15 @@ src/
     DashboardView    — Home / welcome screen
     SingleView       — Single track download
     ScanView         — Playlist scan + history
-    ProgressView     — Playlist download progress
-    LibraryView      — Browse downloaded files
-    ErrorsView       — Error retry management
+    ProgressView     — Playlist download progress with rate limit detection
+    LibraryView      — Album grid view + Apple Music sync
+    ErrorsView       — Retry, find similar, error management
+    YoutubeView      — Embedded YouTube browser
   components/
     SettingsPanel    — Settings, update libs, factory reset
     ui/              — shadcn components
 build/
   icon.png/.icns     — App icon
-```
-
-## 📦 Build
-
-```bash
-# Production build (creates .dmg in release/)
-npm run dist
 ```
 
 ## ⚙️ Settings
@@ -86,6 +92,7 @@ npm run dist
 |---------|---------|-------------|
 | Output Directory | `~/Music/YT` | Where MP3 files are saved |
 | Audio Quality | 320K | Auto fallback: 320K → 256K → 192K → 128K |
+| Parallel Downloads | 10 | Simultaneous downloads (1–100). Lower = less chance of rate limiting |
 | Cookies File | — | `cookies.txt` for private playlist access |
 
 ## 📝 License
