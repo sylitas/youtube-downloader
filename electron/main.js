@@ -217,11 +217,15 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
+
+  // Check deps after window is ready to show
+  mainWindow.webContents.on('did-finish-load', () => {
+    checkAndInstallDeps();
+  });
 }
 
 app.whenReady().then(async () => {
   createWindow();
-  await checkAndInstallDeps();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
